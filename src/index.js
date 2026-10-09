@@ -10,6 +10,8 @@ import { FUNCTIONS, SOURCE } from './controls.js';
 const NIST_SOURCE_URL = 'https://csrc.nist.gov/extensions/nudp/services/json/csf/download?olirids=all';
 const STATUS_KEY = 'csf-freshness-status';
 
+const ICONS = { GV: '🧭', ID: '🔍', PR: '🔒', DE: '👁️', RS: '🚨', RC: '🔄' };
+
 async function sha256Hex(buf) {
   const digest = await crypto.subtle.digest('SHA-256', buf);
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
@@ -48,156 +50,265 @@ function jsonResponse(data, init = {}) {
   });
 }
 
-function renderPage() {
-  const functionCards = FUNCTIONS.map(
-    (fn) => `
-    <section class="card" data-fn="${fn.id}">
-      <header class="card-head">
-        <h2>${fn.name} <span class="fn-id">${fn.id}</span></h2>
-        <div class="ring" data-ring="${fn.id}"><span data-pct="${fn.id}">0%</span></div>
-      </header>
-      <p class="summary">${fn.summary}</p>
-      <ul class="controls">
-        ${fn.controls
-          .map(
-            (c) => `
-          <li>
-            <label>
-              <input type="checkbox" data-fn="${fn.id}" data-id="${c.id}" />
-              <span class="phase">${c.phase}</span>
-              <span class="ctl-id">${c.id}</span>
-              <span class="ctl-text">${c.text}</span>
-            </label>
-          </li>`
-          )
-          .join('')}
-      </ul>
-    </section>`
-  ).join('');
-
-  return `<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>NIST CSF 2.0 Small Business Dashboard</title>
-<style>
+const SHARED_STYLES = `
   :root {
-    --bg: #0b1220; --panel: #121b2e; --panel-2: #0f1830; --text: #e8edf7; --muted: #9fb0cc;
-    --accent: #4da3ff; --good: #35c470; --warn: #e8b339; --bad: #ef5a5a; --border: #223253;
+    --bg: #ffffff; --panel: #ffffff; --panel-2: #f2f6ff; --text: #0b1a33; --muted: #5c6b8a;
+    --accent: #0a5cff; --accent-dark: #0041c2; --good: #18a957; --good-bg: #e9fbf0;
+    --warn: #d98400; --bad: #e0392f; --border: #dde6fb;
   }
   * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--text); font-family: -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; }
-  header.top { padding: 20px 24px; border-bottom: 1px solid var(--border); display: flex; flex-wrap: wrap; gap: 16px; align-items: center; justify-content: space-between; }
-  header.top h1 { font-size: 18px; margin: 0; }
-  header.top .sub { color: var(--muted); font-size: 13px; }
-  header.top .disclaimer { color: var(--muted); font-size: 11px; margin-top: 4px; max-width: 520px; }
-  .status-bar { display: flex; align-items: center; gap: 10px; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px; }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; line-height: 1.5; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  header.top { padding: 28px 32px; border-bottom: 1px solid var(--border); display: flex; flex-wrap: wrap; gap: 18px; align-items: flex-start; justify-content: space-between; }
+  header.top h1 { font-size: 24px; margin: 0; letter-spacing: -0.01em; }
+  header.top .sub { color: var(--muted); font-size: 14px; margin-top: 4px; }
+  header.top .disclaimer { color: var(--muted); font-size: 12px; margin-top: 8px; max-width: 540px; }
+  .status-bar { display: flex; align-items: center; gap: 12px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 12px; padding: 12px 16px; }
   .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--muted); flex-shrink: 0; }
   .dot.good { background: var(--good); box-shadow: 0 0 8px var(--good); }
   .dot.warn { background: var(--warn); box-shadow: 0 0 8px var(--warn); }
   .dot.bad { background: var(--bad); box-shadow: 0 0 8px var(--bad); }
   .status-text { font-size: 13px; color: var(--muted); }
   .status-text strong { color: var(--text); }
-  button { background: var(--accent); color: #06111f; border: none; border-radius: 8px; padding: 8px 14px; font-weight: 600; cursor: pointer; font-size: 13px; }
-  button:hover { filter: brightness(1.08); }
-  main { padding: 24px; display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 16px; max-width: 1400px; margin: 0 auto; }
-  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 16px; }
-  .card-head { display: flex; justify-content: space-between; align-items: center; }
-  .card-head h2 { font-size: 16px; margin: 0; }
-  .fn-id { color: var(--muted); font-size: 12px; font-weight: 400; }
-  .summary { color: var(--muted); font-size: 13px; margin: 8px 0 12px; }
-  .ring { width: 44px; height: 44px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; background: conic-gradient(var(--accent) 0deg, var(--border) 0deg); }
-  .ring span { background: var(--panel); width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
-  ul.controls { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
-  ul.controls li { border-top: 1px solid var(--border); padding-top: 6px; }
-  ul.controls li:first-child { border-top: none; padding-top: 0; }
-  label { display: grid; grid-template-columns: 18px auto; gap: 4px 10px; align-items: baseline; cursor: pointer; font-size: 13px; }
-  .phase { grid-column: 2; font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--accent); }
-  .ctl-id { grid-column: 2; font-size: 11px; color: var(--muted); font-family: ui-monospace, monospace; }
-  .ctl-text { grid-column: 2; color: var(--text); }
-  footer { padding: 24px; text-align: center; color: var(--muted); font-size: 12px; }
-  footer a { color: var(--accent); }
-</style>
-</head>
-<body>
-<header class="top">
-  <div>
-    <h1>NIST CSF 2.0 &mdash; Small Business Control Dashboard</h1>
-    <div class="sub">Source: ${SOURCE.title} (${SOURCE.publication}, ${SOURCE.published})</div>
-    <div class="disclaimer">This is a supplement based on NIST's Small Business Quick-Start Guide, not a replacement for the full CSF 2.0 Core, and is not affiliated with or endorsed by NIST.</div>
-  </div>
+  button, .btn { background: var(--accent); color: #ffffff; border: none; border-radius: 10px; padding: 10px 18px; font-weight: 600; cursor: pointer; font-size: 14px; }
+  button:hover, .btn:hover { background: var(--accent-dark); text-decoration: none; }
+  .btn.secondary { background: var(--panel-2); color: var(--accent); border: 1px solid var(--border); }
+  .btn.secondary:hover { background: #e7edff; }
+  main { padding: 32px; max-width: 1200px; margin: 0 auto; }
+  footer { padding: 32px; text-align: center; color: var(--muted); font-size: 12px; }
+  .progress-track { background: var(--panel-2); border-radius: 999px; height: 10px; overflow: hidden; }
+  .progress-fill { background: var(--accent); height: 100%; border-radius: 999px; transition: width 0.3s ease; width: 0%; }
+  .progress-fill.complete { background: var(--good); }
+  .progress-label { font-size: 13px; color: var(--muted); margin-bottom: 6px; display: flex; justify-content: space-between; }
+`;
+
+function statusBarHtml() {
+  return `
   <div class="status-bar" id="status-bar">
     <span class="dot" id="status-dot"></span>
     <span class="status-text" id="status-text">Checking framework freshness&hellip;</span>
     <button id="check-btn">Check Now</button>
-  </div>
-</header>
-<main>
-${functionCards}
-</main>
-<footer>
-  Controls sourced from NIST SP 1300 (<a href="${SOURCE.doi}" target="_blank" rel="noopener">${SOURCE.doi}</a>).
-  Freshness is checked against NIST's live CSF 2.0 reference export. Progress is stored locally in your browser only.
-</footer>
-<script>
-  const STORAGE_KEY = 'csf-progress-v1';
-  const state = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+  </div>`;
+}
 
-  function save() { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
-
-  function updateRing(fnId) {
-    const boxes = [...document.querySelectorAll('input[data-fn="' + fnId + '"]')];
-    const done = boxes.filter((b) => b.checked).length;
-    const pct = boxes.length ? Math.round((done / boxes.length) * 100) : 0;
-    const ring = document.querySelector('[data-ring="' + fnId + '"]');
-    const label = document.querySelector('[data-pct="' + fnId + '"]');
-    const color = pct === 100 ? 'var(--good)' : pct > 0 ? 'var(--accent)' : 'var(--border)';
-    ring.style.background = 'conic-gradient(' + color + ' ' + (pct * 3.6) + 'deg, var(--border) 0deg)';
-    label.textContent = pct + '%';
-  }
-
-  document.querySelectorAll('input[type="checkbox"]').forEach((box) => {
-    const key = box.dataset.fn + ':' + box.dataset.id;
-    box.checked = !!state[key];
-    box.addEventListener('change', () => {
-      state[key] = box.checked;
-      save();
-      updateRing(box.dataset.fn);
-    });
-  });
-  document.querySelectorAll('[data-ring]').forEach((r) => updateRing(r.dataset.ring));
-
+const STATUS_SCRIPT = `
   function renderStatus(s) {
     const dot = document.getElementById('status-dot');
     const text = document.getElementById('status-text');
     dot.className = 'dot';
     if (s.isCurrent === true) {
       dot.classList.add('good');
-      text.innerHTML = '<strong>Current</strong> &mdash; matches NIST CSF 2.0 source as of ' + new Date(s.checkedAt).toLocaleString();
+      text.innerHTML = '<strong>Up to date</strong> &mdash; matches NIST CSF 2.0 as of ' + new Date(s.checkedAt).toLocaleString();
     } else if (s.isCurrent === false) {
       dot.classList.add('bad');
-      text.innerHTML = '<strong>Update available</strong> &mdash; NIST source changed since this dashboard was last reviewed (checked ' + new Date(s.checkedAt).toLocaleString() + ')';
+      text.innerHTML = '<strong>Update available</strong> &mdash; NIST source changed since this was last reviewed (checked ' + new Date(s.checkedAt).toLocaleString() + ')';
     } else {
       dot.classList.add('warn');
       text.innerHTML = '<strong>Unknown</strong> &mdash; no freshness check has run yet';
     }
   }
-
   async function loadStatus() {
     const r = await fetch('/api/status');
     renderStatus(await r.json());
   }
   document.getElementById('check-btn').addEventListener('click', async () => {
-    const text = document.getElementById('status-text');
-    text.textContent = 'Checking against NIST now…';
+    document.getElementById('status-text').textContent = 'Checking against NIST now…';
     const r = await fetch('/api/refresh', { method: 'POST' });
     renderStatus(await r.json());
   });
   loadStatus();
+`;
+
+function pageShell({ title, headerExtra = '', body, script }) {
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>${title}</title>
+<style>${SHARED_STYLES}</style>
+</head>
+<body>
+<header class="top">
+  <div>
+    <h1>NIST CSF 2.0 &mdash; Small Business Dashboard</h1>
+    <div class="sub">Source: ${SOURCE.title} (${SOURCE.publication}, ${SOURCE.published})</div>
+    <div class="disclaimer">This is a supplement based on NIST's Small Business Quick-Start Guide, not a replacement for the full CSF 2.0 Core, and is not affiliated with or endorsed by NIST.</div>
+    ${headerExtra}
+  </div>
+  ${statusBarHtml()}
+</header>
+<main>
+${body}
+</main>
+<footer>
+  Controls sourced from NIST SP 1300 (<a href="${SOURCE.doi}" target="_blank" rel="noopener">${SOURCE.doi}</a>).
+  Freshness is checked against NIST's live CSF 2.0 reference export. Your progress is stored only in this browser.
+</footer>
+<script>
+  const STORAGE_KEY = 'csf-progress-v1';
+  const state = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+  function save() { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
+  ${STATUS_SCRIPT}
+  ${script}
 </script>
 </body>
 </html>`;
+}
+
+function renderHome() {
+  const counts = FUNCTIONS.map((fn) => fn.controls.length);
+  const grandTotal = counts.reduce((a, b) => a + b, 0);
+
+  const cards = FUNCTIONS.map(
+    (fn) => `
+    <a class="section-card" href="/function/${fn.id}" data-fn="${fn.id}" data-total="${fn.controls.length}">
+      <div class="section-icon">${ICONS[fn.id] || ''}</div>
+      <div class="section-body">
+        <h2>${fn.name}</h2>
+        <p>${fn.summary}</p>
+        <div class="progress-label"><span data-count="${fn.id}">0 of ${fn.controls.length} done</span><span data-pct-label="${fn.id}">0%</span></div>
+        <div class="progress-track"><div class="progress-fill" data-fill="${fn.id}"></div></div>
+      </div>
+      <div class="section-arrow">View controls &rarr;</div>
+    </a>`
+  ).join('');
+
+  const body = `
+  <div class="overall">
+    <div class="progress-label"><span>Overall progress</span><span data-pct-label="overall">0%</span></div>
+    <div class="progress-track"><div class="progress-fill" data-fill="overall"></div></div>
+    <div class="overall-count" data-count="overall">0 of ${grandTotal} controls complete</div>
+  </div>
+  <div class="grid">${cards}</div>`;
+
+  const extraStyles = `
+  <style>
+    .overall { max-width: 1200px; margin: 0 auto 28px; }
+    .overall-count { color: var(--muted); font-size: 13px; margin-top: 6px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 24px; }
+    .section-card { display: flex; flex-direction: column; gap: 14px; background: var(--panel); border: 1px solid var(--border); border-radius: 18px; padding: 28px; box-shadow: 0 1px 2px rgba(10,30,70,0.04); color: var(--text); }
+    .section-card:hover { border-color: var(--accent); box-shadow: 0 4px 16px rgba(10,92,255,0.12); text-decoration: none; }
+    .section-icon { font-size: 32px; }
+    .section-body h2 { margin: 0 0 6px; font-size: 19px; }
+    .section-body p { margin: 0 0 14px; color: var(--muted); font-size: 14px; }
+    .section-arrow { font-size: 13px; font-weight: 600; color: var(--accent); }
+  </style>`;
+
+  const script = `
+  const TOTALS = ${JSON.stringify(Object.fromEntries(FUNCTIONS.map((fn) => [fn.id, fn.controls.length])))};
+  function countDone(fnId) {
+    return Object.keys(state).filter((k) => k.startsWith(fnId + ':') && state[k]).length;
+  }
+  function renderProgress() {
+    let doneAll = 0, totalAll = 0;
+    Object.keys(TOTALS).forEach((fnId) => {
+      const total = TOTALS[fnId];
+      const done = countDone(fnId);
+      totalAll += total; doneAll += done;
+      const pct = total ? Math.round((done / total) * 100) : 0;
+      const fill = document.querySelector('[data-fill="' + fnId + '"]');
+      fill.style.width = pct + '%';
+      fill.classList.toggle('complete', pct === 100);
+      document.querySelector('[data-pct-label="' + fnId + '"]').textContent = pct + '%';
+      document.querySelector('[data-count="' + fnId + '"]').textContent = done + ' of ' + total + ' done';
+    });
+    const overallPct = totalAll ? Math.round((doneAll / totalAll) * 100) : 0;
+    const overallFill = document.querySelector('[data-fill="overall"]');
+    overallFill.style.width = overallPct + '%';
+    overallFill.classList.toggle('complete', overallPct === 100);
+    document.querySelector('[data-pct-label="overall"]').textContent = overallPct + '%';
+    document.querySelector('[data-count="overall"]').textContent = doneAll + ' of ' + totalAll + ' controls complete';
+  }
+  renderProgress();
+  `;
+
+  return pageShell({ title: 'NIST CSF 2.0 — Small Business Dashboard', headerExtra: extraStyles, body, script });
+}
+
+function renderFunctionPage(fn) {
+  const rows = fn.controls
+    .map(
+      (c) => `
+    <li class="ctl-row" data-row="${c.id}">
+      <label>
+        <input type="checkbox" data-fn="${fn.id}" data-id="${c.id}" />
+        <span class="check-badge" data-badge="${c.id}">&#10003;</span>
+        <span class="ctl-main">
+          <span class="phase">${c.phase}</span>
+          <span class="ctl-id">${c.id}</span>
+          <span class="ctl-text">${c.text}</span>
+        </span>
+      </label>
+    </li>`
+    )
+    .join('');
+
+  const body = `
+  <a class="back-link" href="/">&larr; Back to dashboard</a>
+  <div class="fn-head">
+    <div class="fn-icon">${ICONS[fn.id] || ''}</div>
+    <div>
+      <h2>${fn.name} <span class="fn-id">${fn.id}</span></h2>
+      <p>${fn.summary}</p>
+    </div>
+  </div>
+  <div class="progress-label"><span data-count="${fn.id}">0 of ${fn.controls.length} done</span><span data-pct-label="${fn.id}">0%</span></div>
+  <div class="progress-track"><div class="progress-fill" data-fill="${fn.id}"></div></div>
+  <ul class="ctl-list">${rows}</ul>`;
+
+  const extraStyles = `
+  <style>
+    .back-link { display: inline-block; margin-bottom: 20px; font-size: 14px; font-weight: 600; }
+    .fn-head { display: flex; gap: 16px; align-items: flex-start; margin-bottom: 20px; }
+    .fn-icon { font-size: 40px; }
+    .fn-head h2 { margin: 0 0 6px; font-size: 24px; }
+    .fn-id { color: var(--muted); font-size: 14px; font-weight: 400; }
+    .fn-head p { margin: 0; color: var(--muted); font-size: 15px; max-width: 640px; }
+    .ctl-list { list-style: none; margin: 24px 0 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+    .ctl-row { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 18px 20px; transition: background 0.15s, border-color 0.15s; }
+    .ctl-row.done { background: var(--good-bg); border-color: var(--good); }
+    .ctl-row label { display: flex; align-items: flex-start; gap: 14px; cursor: pointer; }
+    .ctl-row input[type="checkbox"] { width: 20px; height: 20px; margin-top: 2px; accent-color: var(--accent); flex-shrink: 0; }
+    .check-badge { display: none; }
+    .ctl-main { display: flex; flex-direction: column; gap: 4px; }
+    .phase { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--accent); font-weight: 700; }
+    .ctl-id { font-size: 12px; color: var(--muted); font-family: ui-monospace, Consolas, monospace; }
+    .ctl-text { font-size: 15px; color: var(--text); }
+  </style>`;
+
+  const script = `
+  const FN_ID = '${fn.id}';
+  function updateRow(box) {
+    box.closest('.ctl-row').classList.toggle('done', box.checked);
+  }
+  function renderProgress() {
+    const boxes = [...document.querySelectorAll('input[data-fn="' + FN_ID + '"]')];
+    const done = boxes.filter((b) => b.checked).length;
+    const total = boxes.length;
+    const pct = total ? Math.round((done / total) * 100) : 0;
+    const fill = document.querySelector('[data-fill="' + FN_ID + '"]');
+    fill.style.width = pct + '%';
+    fill.classList.toggle('complete', pct === 100);
+    document.querySelector('[data-pct-label="' + FN_ID + '"]').textContent = pct + '%';
+    document.querySelector('[data-count="' + FN_ID + '"]').textContent = done + ' of ' + total + ' done';
+  }
+  document.querySelectorAll('input[type="checkbox"]').forEach((box) => {
+    const key = box.dataset.fn + ':' + box.dataset.id;
+    box.checked = !!state[key];
+    updateRow(box);
+    box.addEventListener('change', () => {
+      state[key] = box.checked;
+      save();
+      updateRow(box);
+      renderProgress();
+    });
+  });
+  renderProgress();
+  `;
+
+  return pageShell({ title: `${fn.name} — NIST CSF 2.0 Dashboard`, headerExtra: extraStyles, body, script });
 }
 
 export default {
@@ -221,7 +332,15 @@ export default {
     }
 
     if (url.pathname === '/') {
-      return new Response(renderPage(), { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+      return new Response(renderHome(), { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+    }
+
+    const match = url.pathname.match(/^\/function\/([A-Z]{2})$/);
+    if (match) {
+      const fn = FUNCTIONS.find((f) => f.id === match[1]);
+      if (fn) {
+        return new Response(renderFunctionPage(fn), { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+      }
     }
 
     return new Response('Not found', { status: 404 });

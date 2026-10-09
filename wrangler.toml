@@ -18,4 +18,4 @@ crons = ["0 13 * * *"]
 # Then paste the returned id below.
 [[kv_namespaces]]
 binding = "CSF_KV"
-id = "REPLACE_WITH_KV_NAMESPACE_ID"
+id = "1e3f9bce1073472ca68cd71389d1358f"

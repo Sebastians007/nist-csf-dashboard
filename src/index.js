@@ -1,5 +1,6 @@
 import { unzipSync } from 'fflate';
 import { FUNCTIONS, SOURCE } from './controls.js';
+import { FULL_CORE } from './full-core.js';
 
 // Official NIST export of the live CSF 2.0 catalog (Cybersecurity & Privacy Reference Tool).
 // The .xlsx NIST generates on each request re-embeds a creation timestamp (in docProps/core.xml
@@ -50,6 +51,55 @@ function jsonResponse(data, init = {}) {
   });
 }
 
+// ---- View data: "simple" is the 42-item NIST SP 1300 small-business quick-start list;
+// "full" is the complete CSF 2.0 Core (106 subcategories) reshaped to the same {id, name,
+// summary, controls:[{id, label, text, examples?, references?}]} shape so both views share
+// one renderer. "label" is the small-business action phase (Understand/Assess/...) in the
+// simple view, and the real CSF Category name (e.g. "Organizational Context") in the full view.
+function simpleAsFunctions() {
+  return FUNCTIONS.map((fn) => ({
+    id: fn.id,
+    name: fn.name,
+    summary: fn.summary,
+    controls: fn.controls.map((c) => ({ id: c.id, label: c.phase, text: c.text })),
+  }));
+}
+
+function fullCoreAsFunctions() {
+  return FULL_CORE.map((fcFn) => {
+    const simpleFn = FUNCTIONS.find((f) => f.id === fcFn.id);
+    const controls = fcFn.categories.flatMap((cat) =>
+      cat.subcategories.map((sc) => ({
+        id: sc.id,
+        label: cat.name,
+        text: sc.text,
+        examples: sc.examples,
+        references: sc.references,
+      }))
+    );
+    return {
+      id: fcFn.id,
+      name: simpleFn ? simpleFn.name : fcFn.name,
+      summary: fcFn.description,
+      controls,
+    };
+  });
+}
+
+const VIEWS = {
+  simple: { label: 'Small Business Quick-Start', get: simpleAsFunctions },
+  full: { label: 'Full CSF 2.0 Core', get: fullCoreAsFunctions },
+};
+
+function resolveView(url) {
+  const v = url.searchParams.get('view');
+  return v === 'full' ? 'full' : 'simple';
+}
+
+function withView(path, view) {
+  return view === 'full' ? `${path}${path.includes('?') ? '&' : '?'}view=full` : path;
+}
+
 const SHARED_STYLES = `
   :root {
     --bg: #ffffff; --panel: #ffffff; --panel-2: #f2f6ff; --text: #0b1a33; --muted: #5c6b8a;
@@ -81,6 +131,25 @@ const SHARED_STYLES = `
   .progress-fill { background: var(--accent); height: 100%; width: 100%; border-radius: 999px; transform: scaleX(0); transform-origin: left; transition: transform 0.3s ease; }
   .progress-fill.complete { background: var(--good); }
   .progress-label { font-size: 13px; color: var(--muted); margin-bottom: 6px; display: flex; justify-content: space-between; }
+  .toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; max-width: 1200px; margin: 0 auto 28px; }
+  .view-toggle { display: inline-flex; background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px; padding: 3px; gap: 2px; }
+  .view-toggle a { padding: 7px 14px; border-radius: 8px; font-size: 13px; font-weight: 600; color: var(--muted); }
+  .view-toggle a.active { background: var(--accent); color: #fff; }
+  .view-toggle a:hover { text-decoration: none; }
+  .toolbar .spacer { flex: 1 1 auto; }
+  .ctl-note { width: 100%; margin-top: 10px; border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; font: inherit; font-size: 13px; color: var(--text); resize: vertical; min-height: 36px; background: var(--panel-2); }
+  .ctl-note::placeholder { color: #93a2c2; }
+  details.ctl-extra { margin-top: 10px; }
+  details.ctl-extra summary { cursor: pointer; font-size: 12px; font-weight: 600; color: var(--accent); }
+  details.ctl-extra .ex-block { font-size: 13px; color: var(--muted); margin-top: 6px; white-space: pre-wrap; }
+  details.ctl-extra .ex-block + .ex-block { margin-top: 8px; }
+  .file-btn { position: relative; overflow: hidden; display: inline-block; }
+  .file-btn input[type="file"] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+  @media print {
+    header.top .status-bar, header.top .disclaimer, .toolbar, .back-link, .section-arrow, input[type="checkbox"] { display: none !important; }
+    .ctl-row { break-inside: avoid; border: 1px solid #ccc !important; }
+    body { color: #000; }
+  }
 `;
 
 function statusBarHtml() {
@@ -120,6 +189,90 @@ const STATUS_SCRIPT = `
   loadStatus();
 `;
 
+// Shared state/export helpers injected on every page. State is a flat object keyed
+// "<view>:<fnId>:<controlId>" (checked: true/false) and "note:<view>:<fnId>:<controlId>"
+// (free-text notes), all stored client-side only, in one localStorage blob.
+const STATE_SCRIPT = `
+  const STORAGE_KEY = 'csf-progress-v2';
+  const LEGACY_KEY = 'csf-progress-v1';
+  let state = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
+  if (!state) {
+    const legacy = JSON.parse(localStorage.getItem(LEGACY_KEY) || '{}');
+    state = {};
+    Object.keys(legacy).forEach((k) => { state['simple:' + k] = legacy[k]; });
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  }
+  function save() { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
+  function ckey(view, fn, id) { return view + ':' + fn + ':' + id; }
+  function nkey(view, fn, id) { return 'note:' + view + ':' + fn + ':' + id; }
+
+  function csvEscape(v) {
+    const s = String(v == null ? '' : v);
+    return /[",\\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  }
+  function downloadBlob(filename, content, type) {
+    const blob = new Blob([content], { type });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+  }
+  function exportCsv(view, data) {
+    const rows = [['Function', 'Category / Phase', 'Control ID', 'Description', 'Status', 'Notes']];
+    data.forEach((fn) => fn.controls.forEach((c) => {
+      const done = !!state[ckey(view, fn.id, c.id)];
+      const note = state[nkey(view, fn.id, c.id)] || '';
+      rows.push([fn.name, c.label, c.id, c.text, done ? 'Done' : 'Not done', note]);
+    }));
+    const csv = rows.map((r) => r.map(csvEscape).join(',')).join('\\n');
+    downloadBlob('nist-csf-progress-' + view + '.csv', csv, 'text/csv');
+  }
+  function exportProgressFile() {
+    downloadBlob('nist-csf-progress.json', JSON.stringify(state, null, 2), 'application/json');
+  }
+  function importProgressFile(file) {
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const incoming = JSON.parse(reader.result);
+        state = Object.assign({}, state, incoming);
+        save();
+        location.reload();
+      } catch (e) {
+        alert('That file did not look like a valid progress export.');
+      }
+    };
+    reader.readAsText(file);
+  }
+  function wireToolbar(view, data) {
+    const exportBtn = document.getElementById('export-csv-btn');
+    if (exportBtn) exportBtn.addEventListener('click', () => exportCsv(view, data));
+    const printBtn = document.getElementById('print-btn');
+    if (printBtn) printBtn.addEventListener('click', () => window.print());
+    const saveBtn = document.getElementById('save-progress-btn');
+    if (saveBtn) saveBtn.addEventListener('click', exportProgressFile);
+    const loadInput = document.getElementById('load-progress-input');
+    if (loadInput) loadInput.addEventListener('change', (e) => { if (e.target.files[0]) importProgressFile(e.target.files[0]); });
+  }
+`;
+
+function toolbarHtml(view, extraRight = '') {
+  return `
+  <div class="toolbar">
+    <div class="view-toggle">
+      <a href="${withView('/', 'simple')}" class="${view === 'simple' ? 'active' : ''}">Small Business Guide</a>
+      <a href="${withView('/', 'full')}" class="${view === 'full' ? 'active' : ''}">Full CSF 2.0 Core</a>
+    </div>
+    <div class="spacer"></div>
+    <button id="export-csv-btn" class="btn secondary" type="button">Export CSV</button>
+    <button id="print-btn" class="btn secondary" type="button">Print / Save as PDF</button>
+    <button id="save-progress-btn" class="btn secondary" type="button">Save progress file</button>
+    <label class="btn secondary file-btn">Load progress file<input id="load-progress-input" type="file" accept="application/json" /></label>
+    ${extraRight}
+  </div>`;
+}
+
 function pageShell({ title, headerExtra = '', body, script }) {
   return `<!doctype html>
 <html lang="en">
@@ -133,8 +286,8 @@ function pageShell({ title, headerExtra = '', body, script }) {
 <header class="top">
   <div>
     <h1>NIST CSF 2.0 &mdash; Small Business Dashboard</h1>
-    <div class="sub">Source: ${SOURCE.title} (${SOURCE.publication}, ${SOURCE.published})</div>
-    <div class="disclaimer">This is a supplement based on NIST's Small Business Quick-Start Guide, not a replacement for the full CSF 2.0 Core, and is not affiliated with or endorsed by NIST.</div>
+    <div class="sub">Source: ${SOURCE.title} (${SOURCE.publication}, ${SOURCE.published}) &middot; Full Core: NIST CSF 2.0 Reference Tool</div>
+    <div class="disclaimer">Not affiliated with or endorsed by NIST. The Small Business Guide is a supplement, not a replacement, for the full CSF 2.0 Core.</div>
     ${headerExtra}
   </div>
   ${statusBarHtml()}
@@ -143,13 +296,11 @@ function pageShell({ title, headerExtra = '', body, script }) {
 ${body}
 </main>
 <footer>
-  Controls sourced from NIST SP 1300 (<a href="${SOURCE.doi}" target="_blank" rel="noopener">${SOURCE.doi}</a>).
-  Freshness is checked against NIST's live CSF 2.0 reference export. Your progress is stored only in this browser.
+  Small Business controls sourced from NIST SP 1300 (<a href="${SOURCE.doi}" target="_blank" rel="noopener">${SOURCE.doi}</a>).
+  Full Core sourced from NIST's CSF 2.0 Reference Tool. Freshness is checked against NIST's live export. Your progress is stored only in this browser.
 </footer>
 <script>
-  const STORAGE_KEY = 'csf-progress-v1';
-  const state = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
-  function save() { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
+  ${STATE_SCRIPT}
   ${STATUS_SCRIPT}
   ${script}
 </script>
@@ -157,13 +308,13 @@ ${body}
 </html>`;
 }
 
-function renderHome() {
-  const counts = FUNCTIONS.map((fn) => fn.controls.length);
-  const grandTotal = counts.reduce((a, b) => a + b, 0);
+function renderHome(view) {
+  const data = VIEWS[view].get();
+  const grandTotal = data.reduce((a, fn) => a + fn.controls.length, 0);
 
-  const cards = FUNCTIONS.map(
+  const cards = data.map(
     (fn) => `
-    <a class="section-card" href="/function/${fn.id}" data-fn="${fn.id}" data-total="${fn.controls.length}">
+    <a class="section-card" href="${withView('/function/' + fn.id, view)}" data-fn="${fn.id}" data-total="${fn.controls.length}">
       <div class="section-icon">${ICONS[fn.id] || ''}</div>
       <div class="section-body">
         <h2>${fn.name}</h2>
@@ -176,8 +327,9 @@ function renderHome() {
   ).join('');
 
   const body = `
+  ${toolbarHtml(view)}
   <div class="overall">
-    <div class="progress-label"><span>Overall progress</span><span data-pct-label="overall">0%</span></div>
+    <div class="progress-label"><span>Overall progress &mdash; ${VIEWS[view].label}</span><span data-pct-label="overall">0%</span></div>
     <div class="progress-track"><div class="progress-fill" data-fill="overall"></div></div>
     <div class="overall-count" data-count="overall">0 of ${grandTotal} controls complete</div>
   </div>
@@ -197,9 +349,11 @@ function renderHome() {
   </style>`;
 
   const script = `
-  const TOTALS = ${JSON.stringify(Object.fromEntries(FUNCTIONS.map((fn) => [fn.id, fn.controls.length])))};
+  const VIEW = '${view}';
+  const DATA = ${JSON.stringify(data)};
+  const TOTALS = Object.fromEntries(DATA.map((fn) => [fn.id, fn.controls.length]));
   function countDone(fnId) {
-    return Object.keys(state).filter((k) => k.startsWith(fnId + ':') && state[k]).length;
+    return Object.keys(state).filter((k) => k.startsWith(VIEW + ':' + fnId + ':') && state[k]).length;
   }
   function renderProgress() {
     let doneAll = 0, totalAll = 0;
@@ -222,23 +376,30 @@ function renderHome() {
     document.querySelector('[data-count="overall"]').textContent = doneAll + ' of ' + totalAll + ' controls complete';
   }
   renderProgress();
+  wireToolbar(VIEW, DATA);
   `;
 
   return pageShell({ title: 'NIST CSF 2.0 — Small Business Dashboard', headerExtra: extraStyles, body, script });
 }
 
-function renderFunctionPage(fn) {
+function renderFunctionPage(fn, view) {
   const rows = fn.controls
     .map(
       (c) => `
     <li class="ctl-row" data-row="${c.id}">
       <label>
-        <input type="checkbox" data-fn="${fn.id}" data-id="${c.id}" />
-        <span class="check-badge" data-badge="${c.id}">&#10003;</span>
+        <input type="checkbox" data-id="${c.id}" />
         <span class="ctl-main">
-          <span class="phase">${c.phase}</span>
+          <span class="phase">${c.label}</span>
           <span class="ctl-id">${c.id}</span>
           <span class="ctl-text">${c.text}</span>
+          ${c.examples || c.references ? `
+          <details class="ctl-extra">
+            <summary>Implementation examples &amp; references</summary>
+            ${c.examples ? `<div class="ex-block"><strong>Examples:</strong>\n${c.examples}</div>` : ''}
+            ${c.references ? `<div class="ex-block"><strong>Informative references:</strong>\n${c.references}</div>` : ''}
+          </details>` : ''}
+          <textarea class="ctl-note" data-note="${c.id}" placeholder="Notes (e.g. how this is implemented, owner, evidence)&hellip;"></textarea>
         </span>
       </label>
     </li>`
@@ -246,7 +407,8 @@ function renderFunctionPage(fn) {
     .join('');
 
   const body = `
-  <a class="back-link" href="/">&larr; Back to dashboard</a>
+  ${toolbarHtml(view)}
+  <a class="back-link" href="${withView('/', view)}">&larr; Back to dashboard</a>
   <div class="fn-head">
     <div class="fn-icon">${ICONS[fn.id] || ''}</div>
     <div>
@@ -271,20 +433,21 @@ function renderFunctionPage(fn) {
     .ctl-row.done { background: var(--good-bg); border-color: var(--good); }
     .ctl-row label { display: flex; align-items: flex-start; gap: 14px; cursor: pointer; }
     .ctl-row input[type="checkbox"] { width: 20px; height: 20px; margin-top: 2px; accent-color: var(--accent); flex-shrink: 0; }
-    .check-badge { display: none; }
-    .ctl-main { display: flex; flex-direction: column; gap: 4px; }
+    .ctl-main { display: flex; flex-direction: column; gap: 4px; flex: 1 1 auto; min-width: 0; }
     .phase { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--accent); font-weight: 700; }
     .ctl-id { font-size: 12px; color: var(--muted); font-family: ui-monospace, Consolas, monospace; }
     .ctl-text { font-size: 15px; color: var(--text); }
   </style>`;
 
   const script = `
+  const VIEW = '${view}';
   const FN_ID = '${fn.id}';
+  const DATA = [${JSON.stringify(fn)}];
   function updateRow(box) {
     box.closest('.ctl-row').classList.toggle('done', box.checked);
   }
   function renderProgress() {
-    const boxes = [...document.querySelectorAll('input[data-fn="' + FN_ID + '"]')];
+    const boxes = [...document.querySelectorAll('.ctl-list input[type="checkbox"]')];
     const done = boxes.filter((b) => b.checked).length;
     const total = boxes.length;
     const pct = total ? Math.round((done / total) * 100) : 0;
@@ -294,8 +457,8 @@ function renderFunctionPage(fn) {
     document.querySelector('[data-pct-label="' + FN_ID + '"]').textContent = pct + '%';
     document.querySelector('[data-count="' + FN_ID + '"]').textContent = done + ' of ' + total + ' done';
   }
-  document.querySelectorAll('input[type="checkbox"]').forEach((box) => {
-    const key = box.dataset.fn + ':' + box.dataset.id;
+  document.querySelectorAll('.ctl-list input[type="checkbox"]').forEach((box) => {
+    const key = ckey(VIEW, FN_ID, box.dataset.id);
     box.checked = !!state[key];
     updateRow(box);
     box.addEventListener('change', () => {
@@ -305,7 +468,13 @@ function renderFunctionPage(fn) {
       renderProgress();
     });
   });
+  document.querySelectorAll('.ctl-note').forEach((ta) => {
+    const key = nkey(VIEW, FN_ID, ta.dataset.note);
+    ta.value = state[key] || '';
+    ta.addEventListener('input', () => { state[key] = ta.value; save(); });
+  });
   renderProgress();
+  wireToolbar(VIEW, DATA);
   `;
 
   return pageShell({ title: `${fn.name} — NIST CSF 2.0 Dashboard`, headerExtra: extraStyles, body, script });
@@ -314,6 +483,7 @@ function renderFunctionPage(fn) {
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+    const view = resolveView(url);
 
     if (url.pathname === '/api/status' && request.method === 'GET') {
       return jsonResponse(await getStatus(env));
@@ -328,18 +498,18 @@ export default {
     }
 
     if (url.pathname === '/api/controls' && request.method === 'GET') {
-      return jsonResponse(FUNCTIONS);
+      return jsonResponse(VIEWS[view].get());
     }
 
     if (url.pathname === '/') {
-      return new Response(renderHome(), { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+      return new Response(renderHome(view), { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
     }
 
     const match = url.pathname.match(/^\/function\/([A-Z]{2})$/);
     if (match) {
-      const fn = FUNCTIONS.find((f) => f.id === match[1]);
+      const fn = VIEWS[view].get().find((f) => f.id === match[1]);
       if (fn) {
-        return new Response(renderFunctionPage(fn), { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+        return new Response(renderFunctionPage(fn, view), { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
       }
     }
 

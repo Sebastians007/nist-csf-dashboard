@@ -2,10 +2,12 @@
   "name": "nist-csf-dashboard",
   "version": "1.0.0",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
-    "capture-baseline": "node scripts/capture-baseline.mjs"
+    "capture-baseline": "node scripts/capture-baseline.mjs",
+    "generate-full-core": "node scripts/generate-full-core.mjs"
   },
   "devDependencies": {
     "wrangler": "^4.0.0"

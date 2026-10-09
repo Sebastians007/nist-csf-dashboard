@@ -53,15 +53,70 @@ function jsonResponse(data, init = {}) {
 
 // ---- View data: "simple" is the 42-item NIST SP 1300 small-business quick-start list;
 // "full" is the complete CSF 2.0 Core (106 subcategories) reshaped to the same {id, name,
-// summary, controls:[{id, label, text, examples?, references?}]} shape so both views share
-// one renderer. "label" is the small-business action phase (Understand/Assess/...) in the
-// simple view, and the real CSF Category name (e.g. "Organizational Context") in the full view.
+// summary, controls:[{id, label, text, examples, references}]} shape so both views share one
+// renderer. "label" is the small-business action phase (Understand/Assess/...) in the simple
+// view, and the real CSF Category name (e.g. "Organizational Context") in the full view.
+//
+// "examples" is a plain string[] — each already stripped of its "ExN:" prefix, ready to render
+// as a bullet. "references" is grouped by framework ({ framework, clauses: string[] }[]) so the
+// UI can render "ISO/IEC 27001:2022 (6)" instead of 30 flat lines — a small business owner cares
+// about the examples; the OLIR crosswalk (ISO, SP 800-53, PCI DSS, NICE, ...) is there for an
+// auditor/insurer/MSSP who asks, not something to read top to bottom.
+const SUBCAT_INDEX = new Map();
+FULL_CORE.forEach((fn) => fn.categories.forEach((cat) => cat.subcategories.forEach((sc) => SUBCAT_INDEX.set(sc.id, sc))));
+
+function splitExamples(raw) {
+  if (!raw) return [];
+  return raw
+    .split('\n')
+    .map((l) => l.replace(/^Ex\d+:\s*/, '').trim())
+    .filter(Boolean);
+}
+
+function groupReferences(raw) {
+  if (!raw) return [];
+  const map = new Map();
+  raw.split('\n').forEach((line) => {
+    line = line.trim();
+    if (!line) return;
+    const idx = line.indexOf(':');
+    const framework = idx === -1 ? line : line.slice(0, idx).trim();
+    const clause = idx === -1 ? '' : line.slice(idx + 1).trim();
+    if (!map.has(framework)) map.set(framework, new Set());
+    if (clause) map.get(framework).add(clause);
+  });
+  return [...map.entries()].map(([framework, clauses]) => ({ framework, clauses: [...clauses] }));
+}
+
+// SP 1300's small-business actions reference real CSF 2.0 subcategory IDs, but in compressed
+// forms NIST's own guide uses for brevity — "ID.AM-01/02/04", "DE.CM-06/09", a trailing
+// "(comm)"/"(assess)" disambiguator, or occasionally a bare category ID like "DE.CM" with no
+// single subcategory. This expands the compressed forms back to the real subcategory IDs so we
+// can look up their examples/references in the full Core; a bare category ID resolves to no
+// subcategories (too ambiguous to guess which one), so that control simply shows no examples.
+function resolveSubcatIds(rawId) {
+  const stripped = rawId.replace(/\s*\([^)]*\)\s*$/, '').trim();
+  if (!stripped.includes('/')) return [stripped];
+  const parts = stripped.split('/').map((p) => p.trim());
+  const m = parts[0].match(/^([A-Z]{2}\.[A-Z]{2}-)(\d+)$/);
+  if (!m) return parts; // already full IDs on both sides, e.g. "RS.AN-03 / RS.MA-03"
+  const prefix = m[1];
+  return parts.map((p, i) => (i === 0 || p.includes('.') ? p : prefix + p.padStart(2, '0')));
+}
+
+function lookupExamplesAndReferences(rawId) {
+  const subcats = resolveSubcatIds(rawId).map((id) => SUBCAT_INDEX.get(id)).filter(Boolean);
+  const examples = [...new Set(subcats.flatMap((sc) => splitExamples(sc.examples)))];
+  const references = groupReferences(subcats.map((sc) => sc.references).filter(Boolean).join('\n'));
+  return { examples, references };
+}
+
 function simpleAsFunctions() {
   return FUNCTIONS.map((fn) => ({
     id: fn.id,
     name: fn.name,
     summary: fn.summary,
-    controls: fn.controls.map((c) => ({ id: c.id, label: c.phase, text: c.text })),
+    controls: fn.controls.map((c) => ({ id: c.id, label: c.phase, text: c.text, ...lookupExamplesAndReferences(c.id) })),
   }));
 }
 
@@ -73,8 +128,8 @@ function fullCoreAsFunctions() {
         id: sc.id,
         label: cat.name,
         text: sc.text,
-        examples: sc.examples,
-        references: sc.references,
+        examples: splitExamples(sc.examples),
+        references: groupReferences(sc.references),
       }))
     );
     return {
@@ -160,10 +215,17 @@ const SHARED_STYLES = `
   .toolbar .spacer { flex: 1 1 auto; }
   .ctl-note { width: 100%; margin-top: 10px; border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; font: inherit; font-size: 13px; color: var(--text); resize: vertical; min-height: 36px; background: var(--panel-2); }
   .ctl-note::placeholder { color: var(--note-placeholder); }
-  details.ctl-extra { margin-top: 10px; }
-  details.ctl-extra summary { cursor: pointer; font-size: 12px; font-weight: 600; color: var(--accent); }
-  details.ctl-extra .ex-block { font-size: 13px; color: var(--muted); margin-top: 6px; white-space: pre-wrap; }
-  details.ctl-extra .ex-block + .ex-block { margin-top: 8px; }
+  .how-to { margin-top: 12px; background: var(--panel-2); border-left: 3px solid var(--accent); border-radius: 0 8px 8px 0; padding: 12px 14px; }
+  .how-to-title { font-size: 11px; font-weight: 700; color: var(--accent); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px; }
+  .how-to-list { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; }
+  .how-to-list li { font-size: 14px; color: var(--text); line-height: 1.5; }
+  .ctl-refs { margin-top: 10px; }
+  .ctl-refs summary { cursor: pointer; font-size: 12px; font-weight: 600; color: var(--muted); }
+  .ctl-refs summary:hover { color: var(--accent); }
+  .ref-groups { margin-top: 8px; display: flex; flex-direction: column; gap: 6px; }
+  .ref-group { font-size: 12px; display: flex; flex-wrap: wrap; gap: 4px 6px; align-items: baseline; }
+  .ref-framework { font-weight: 700; color: var(--text); white-space: nowrap; }
+  .ref-clauses { color: var(--muted); }
   .file-btn { position: relative; overflow: hidden; display: inline-block; }
   .file-btn input[type="file"] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
   @media print {
@@ -453,8 +515,31 @@ function renderHome(view) {
 
 function renderFunctionPage(fn, view) {
   const rows = fn.controls
-    .map(
-      (c) => `
+    .map((c) => {
+      const howTo = c.examples.length
+        ? `
+          <div class="how-to">
+            <div class="how-to-title">How to do this</div>
+            <ul class="how-to-list">${c.examples.map((e) => `<li>${e}</li>`).join('')}</ul>
+          </div>`
+        : '';
+
+      const refCount = c.references.reduce((n, r) => n + Math.max(r.clauses.length, 1), 0);
+      const previewNames = c.references.slice(0, 3).map((r) => r.framework).join(', ');
+      const moreCount = c.references.length > 3 ? ` +${c.references.length - 3} more` : '';
+      const refs = c.references.length
+        ? `
+          <details class="ctl-refs">
+            <summary>${refCount} compliance mapping${refCount === 1 ? '' : 's'} (${previewNames}${moreCount}) &mdash; for auditors &amp; insurers</summary>
+            <div class="ref-groups">
+              ${c.references
+                .map((r) => `<div class="ref-group"><span class="ref-framework">${r.framework}</span><span class="ref-clauses">${r.clauses.join(', ')}</span></div>`)
+                .join('')}
+            </div>
+          </details>`
+        : '';
+
+      return `
     <li class="ctl-row" data-row="${c.id}">
       <label>
         <input type="checkbox" data-id="${c.id}" />
@@ -462,17 +547,13 @@ function renderFunctionPage(fn, view) {
           <span class="phase">${c.label}</span>
           <span class="ctl-id">${c.id}</span>
           <span class="ctl-text">${c.text}</span>
-          ${c.examples || c.references ? `
-          <details class="ctl-extra">
-            <summary>Implementation examples &amp; references</summary>
-            ${c.examples ? `<div class="ex-block"><strong>Examples:</strong>\n${c.examples}</div>` : ''}
-            ${c.references ? `<div class="ex-block"><strong>Informative references:</strong>\n${c.references}</div>` : ''}
-          </details>` : ''}
+          ${howTo}
+          ${refs}
           <textarea class="ctl-note" data-note="${c.id}" placeholder="Notes (e.g. how this is implemented, owner, evidence)&hellip;"></textarea>
         </span>
       </label>
-    </li>`
-    )
+    </li>`;
+    })
     .join('');
 
   const body = `

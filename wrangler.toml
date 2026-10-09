@@ -1,0 +1,21 @@
+name = "nist-csf-dashboard"
+main = "src/index.js"
+compatibility_date = "2024-09-23"
+
+[vars]
+# SHA-256 of the xl/sharedStrings.xml entry inside NIST's CSF 2.0 export
+# (https://csrc.nist.gov/extensions/nudp/services/json/csf/download?olirids=all),
+# captured 2026-10-09, the day the bundled control list in src/controls.js was last
+# checked against NIST's CSF 2.0 source. Re-run `npm run capture-baseline` and update
+# this value whenever you re-verify controls.js against NIST.
+BASELINE_HASH = "d1995e744742fc12e51c04f40ee916ff7d31df15e6e6924dc2992d1f7e9a0ba3"
+
+# Daily freshness check against the NIST source.
+[triggers]
+crons = ["0 13 * * *"]
+
+# Create with: npx wrangler kv namespace create CSF_KV
+# Then paste the returned id below.
+[[kv_namespaces]]
+binding = "CSF_KV"
+id = "REPLACE_WITH_KV_NAMESPACE_ID"

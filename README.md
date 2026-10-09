@@ -1,9 +1,18 @@
 # NIST CSF 2.0 Small Business Dashboard
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Live app](https://img.shields.io/badge/live-nist--csf--dashboard-0a5cff)](https://nist-csf-dashboard.clearcut-foundation.workers.dev)
+
 A small Cloudflare Worker that renders the controls from NIST SP 1300
 ("NIST Cybersecurity Framework 2.0: Small Business Quick-Start Guide") as an
 interactive, visual dashboard, and tracks whether its bundled control list is
 still in sync with NIST's live CSF 2.0 reference data.
+
+**Live app:** https://nist-csf-dashboard.clearcut-foundation.workers.dev
+
+| Overview | Control detail |
+|---|---|
+| ![Dashboard overview](docs/screenshots/dashboard-light.jpg) | ![Control detail with implementation examples](docs/screenshots/control-detail-light.jpg) |
 
 ## What it does
 
@@ -98,3 +107,14 @@ npm run deploy   # deploy to Cloudflare
 Controls: NIST SP 1300, https://doi.org/10.6028/NIST.SP.1300 (Feb 2024).
 This is a supplement, not a replacement, for the full NIST Cybersecurity
 Framework 2.0 — see https://www.nist.gov/cyberframework.
+
+## Contributing
+
+Issues and pull requests are welcome — see `src/controls.js` for the
+Small Business Guide dataset and `scripts/generate-full-core.mjs` for how
+`src/full-core.js` is generated from NIST's own data (never hand-edit
+`src/full-core.js` directly).
+
+## License
+
+[MIT](LICENSE) © Sebastian Sartele

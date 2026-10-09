@@ -103,17 +103,37 @@ function withView(path, view) {
 const SHARED_STYLES = `
   :root {
     --bg: #ffffff; --panel: #ffffff; --panel-2: #f2f6ff; --text: #0b1a33; --muted: #5c6b8a;
-    --accent: #0a5cff; --accent-dark: #0041c2; --good: #18a957; --good-bg: #e9fbf0;
-    --warn: #d98400; --bad: #e0392f; --border: #dde6fb;
+    --accent: #0a5cff; --accent-dark: #0041c2; --accent-contrast: #ffffff; --good: #18a957; --good-bg: #e9fbf0;
+    --warn: #d98400; --bad: #e0392f; --border: #dde6fb; --btn-secondary-hover: #e7edff;
+    --note-placeholder: #93a2c2; --card-shadow: 0 1px 2px rgba(10,30,70,0.04); --card-shadow-hover: 0 4px 16px rgba(10,92,255,0.12);
+    --scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0b1220; --panel: #121a2e; --panel-2: #182544; --text: #eaf0ff; --muted: #93a4c9;
+      --accent: #3b82ff; --accent-dark: #86aeff; --accent-contrast: #061024; --good: #22c55e; --good-bg: #113322;
+      --warn: #f0a93a; --bad: #f0564a; --border: #28355a; --btn-secondary-hover: #1e2c4e;
+      --note-placeholder: #6b7aa0; --card-shadow: 0 1px 2px rgba(0,0,0,0.3); --card-shadow-hover: 0 4px 16px rgba(59,130,255,0.18);
+      --scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0b1220; --panel: #121a2e; --panel-2: #182544; --text: #eaf0ff; --muted: #93a4c9;
+    --accent: #3b82ff; --accent-dark: #86aeff; --accent-contrast: #061024; --good: #22c55e; --good-bg: #113322;
+    --warn: #f0a93a; --bad: #f0564a; --border: #28355a; --btn-secondary-hover: #1e2c4e;
+    --note-placeholder: #6b7aa0; --card-shadow: 0 1px 2px rgba(0,0,0,0.3); --card-shadow-hover: 0 4px 16px rgba(59,130,255,0.18);
+    --scheme: dark;
   }
   * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--text); font-family: -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; line-height: 1.5; }
+  html { color-scheme: var(--scheme); }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; line-height: 1.5; transition: background 0.15s ease, color 0.15s ease; }
   a { color: var(--accent); text-decoration: none; }
   a:hover { text-decoration: underline; }
   header.top { padding: 28px 32px; border-bottom: 1px solid var(--border); display: flex; flex-wrap: wrap; gap: 18px; align-items: flex-start; justify-content: space-between; }
   header.top h1 { font-size: 24px; margin: 0; letter-spacing: -0.01em; }
   header.top .sub { color: var(--muted); font-size: 14px; margin-top: 4px; }
   header.top .disclaimer { color: var(--muted); font-size: 12px; margin-top: 8px; max-width: 540px; }
+  .header-right { display: flex; align-items: center; gap: 10px; }
   .status-bar { display: flex; align-items: center; gap: 12px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 12px; padding: 12px 16px; }
   .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--muted); flex-shrink: 0; }
   .dot.good { background: var(--good); box-shadow: 0 0 8px var(--good); }
@@ -121,10 +141,11 @@ const SHARED_STYLES = `
   .dot.bad { background: var(--bad); box-shadow: 0 0 8px var(--bad); }
   .status-text { font-size: 13px; color: var(--muted); }
   .status-text strong { color: var(--text); }
-  button, .btn { background: var(--accent); color: #ffffff; border: none; border-radius: 10px; padding: 10px 18px; font-weight: 600; cursor: pointer; font-size: 14px; }
+  button, .btn { background: var(--accent); color: var(--accent-contrast); border: none; border-radius: 10px; padding: 10px 18px; font-weight: 600; cursor: pointer; font-size: 14px; }
   button:hover, .btn:hover { background: var(--accent-dark); text-decoration: none; }
   .btn.secondary { background: var(--panel-2); color: var(--accent); border: 1px solid var(--border); }
-  .btn.secondary:hover { background: #e7edff; }
+  .btn.secondary:hover { background: var(--btn-secondary-hover); }
+  .theme-toggle { font-size: 18px; line-height: 1; padding: 10px 12px; }
   main { padding: 32px; max-width: 1200px; margin: 0 auto; }
   footer { padding: 32px; text-align: center; color: var(--muted); font-size: 12px; }
   .progress-track { background: var(--panel-2); border-radius: 999px; height: 10px; overflow: hidden; }
@@ -134,11 +155,11 @@ const SHARED_STYLES = `
   .toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; max-width: 1200px; margin: 0 auto 28px; }
   .view-toggle { display: inline-flex; background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px; padding: 3px; gap: 2px; }
   .view-toggle a { padding: 7px 14px; border-radius: 8px; font-size: 13px; font-weight: 600; color: var(--muted); }
-  .view-toggle a.active { background: var(--accent); color: #fff; }
+  .view-toggle a.active { background: var(--accent); color: var(--accent-contrast); }
   .view-toggle a:hover { text-decoration: none; }
   .toolbar .spacer { flex: 1 1 auto; }
   .ctl-note { width: 100%; margin-top: 10px; border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; font: inherit; font-size: 13px; color: var(--text); resize: vertical; min-height: 36px; background: var(--panel-2); }
-  .ctl-note::placeholder { color: #93a2c2; }
+  .ctl-note::placeholder { color: var(--note-placeholder); }
   details.ctl-extra { margin-top: 10px; }
   details.ctl-extra summary { cursor: pointer; font-size: 12px; font-weight: 600; color: var(--accent); }
   details.ctl-extra .ex-block { font-size: 13px; color: var(--muted); margin-top: 6px; white-space: pre-wrap; }
@@ -146,20 +167,66 @@ const SHARED_STYLES = `
   .file-btn { position: relative; overflow: hidden; display: inline-block; }
   .file-btn input[type="file"] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
   @media print {
-    header.top .status-bar, header.top .disclaimer, .toolbar, .back-link, .section-arrow, input[type="checkbox"] { display: none !important; }
+    /* Printed output is always light, regardless of the active on-screen theme. */
+    :root, :root[data-theme="dark"] {
+      --bg: #ffffff; --panel: #ffffff; --panel-2: #f2f6ff; --text: #0b1a33; --muted: #5c6b8a;
+      --border: #dde6fb; --good-bg: #e9fbf0;
+    }
+    body { background: #fff; color: #000; }
+    header.top .status-bar, header.top .disclaimer, .toolbar, .back-link, .section-arrow, input[type="checkbox"], .theme-toggle { display: none !important; }
     .ctl-row { break-inside: avoid; border: 1px solid #ccc !important; }
-    body { color: #000; }
   }
 `;
 
 function statusBarHtml() {
   return `
-  <div class="status-bar" id="status-bar">
-    <span class="dot" id="status-dot"></span>
-    <span class="status-text" id="status-text">Checking framework freshness&hellip;</span>
-    <button id="check-btn">Check Now</button>
+  <div class="header-right">
+    <div class="status-bar" id="status-bar">
+      <span class="dot" id="status-dot"></span>
+      <span class="status-text" id="status-text">Checking framework freshness&hellip;</span>
+      <button id="check-btn">Check Now</button>
+    </div>
+    <button id="theme-toggle" class="btn secondary theme-toggle" type="button" aria-label="Toggle dark mode" title="Toggle dark mode">🌙</button>
   </div>`;
 }
+
+// Runs before CSS paints so the page never flashes the wrong theme. Resolution order:
+// explicit localStorage choice > OS preference (handled by the prefers-color-scheme
+// media query in CSS, which needs no attribute) > light default.
+const THEME_INIT_SCRIPT = `
+  (function () {
+    try {
+      var t = localStorage.getItem('csf-theme');
+      if (t === 'dark' || t === 'light') document.documentElement.setAttribute('data-theme', t);
+    } catch (e) {}
+  })();
+`;
+
+const THEME_TOGGLE_SCRIPT = `
+  (function () {
+    var btn = document.getElementById('theme-toggle');
+    if (!btn) return;
+    var media = window.matchMedia('(prefers-color-scheme: dark)');
+    function current() {
+      var attr = document.documentElement.getAttribute('data-theme');
+      if (attr === 'dark' || attr === 'light') return attr;
+      return media.matches ? 'dark' : 'light';
+    }
+    function paint() {
+      btn.textContent = current() === 'dark' ? '☀️' : '🌙';
+    }
+    paint();
+    btn.addEventListener('click', function () {
+      var next = current() === 'dark' ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', next);
+      try { localStorage.setItem('csf-theme', next); } catch (e) {}
+      paint();
+    });
+    media.addEventListener('change', function () {
+      if (!document.documentElement.hasAttribute('data-theme')) paint();
+    });
+  })();
+`;
 
 const STATUS_SCRIPT = `
   function renderStatus(s) {
@@ -280,6 +347,7 @@ function pageShell({ title, headerExtra = '', body, script }) {
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>${title}</title>
+<script>${THEME_INIT_SCRIPT}</script>
 <style>${SHARED_STYLES}</style>
 </head>
 <body>
@@ -300,6 +368,7 @@ ${body}
   Full Core sourced from NIST's CSF 2.0 Reference Tool. Freshness is checked against NIST's live export. Your progress is stored only in this browser.
 </footer>
 <script>
+  ${THEME_TOGGLE_SCRIPT}
   ${STATE_SCRIPT}
   ${STATUS_SCRIPT}
   ${script}
@@ -340,8 +409,8 @@ function renderHome(view) {
     .overall { max-width: 1200px; margin: 0 auto 28px; }
     .overall-count { color: var(--muted); font-size: 13px; margin-top: 6px; }
     .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 24px; }
-    .section-card { display: flex; flex-direction: column; gap: 14px; background: var(--panel); border: 1px solid var(--border); border-radius: 18px; padding: 28px; box-shadow: 0 1px 2px rgba(10,30,70,0.04); color: var(--text); }
-    .section-card:hover { border-color: var(--accent); box-shadow: 0 4px 16px rgba(10,92,255,0.12); text-decoration: none; }
+    .section-card { display: flex; flex-direction: column; gap: 14px; background: var(--panel); border: 1px solid var(--border); border-radius: 18px; padding: 28px; box-shadow: var(--card-shadow); color: var(--text); }
+    .section-card:hover { border-color: var(--accent); box-shadow: var(--card-shadow-hover); text-decoration: none; }
     .section-icon { font-size: 32px; }
     .section-body h2 { margin: 0 0 6px; font-size: 19px; }
     .section-body p { margin: 0 0 14px; color: var(--muted); font-size: 14px; }

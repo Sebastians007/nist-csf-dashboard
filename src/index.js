@@ -215,7 +215,7 @@ const SHARED_STYLES = `
   .toolbar .spacer { flex: 1 1 auto; }
   .ctl-note { width: 100%; margin-top: 10px; border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; font: inherit; font-size: 13px; color: var(--text); resize: vertical; min-height: 36px; background: var(--panel-2); }
   .ctl-note::placeholder { color: var(--note-placeholder); }
-  .how-to { margin-top: 12px; background: var(--panel-2); border-left: 3px solid var(--accent); border-radius: 0 8px 8px 0; padding: 12px 14px; }
+  .how-to { margin-top: 12px; background: var(--panel-2); border-radius: 8px; padding: 12px 14px; }
   .how-to-title { font-size: 11px; font-weight: 700; color: var(--accent); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px; }
   .how-to-list { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; }
   .how-to-list li { font-size: 14px; color: var(--text); line-height: 1.5; }

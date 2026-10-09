@@ -78,7 +78,7 @@ const SHARED_STYLES = `
   main { padding: 32px; max-width: 1200px; margin: 0 auto; }
   footer { padding: 32px; text-align: center; color: var(--muted); font-size: 12px; }
   .progress-track { background: var(--panel-2); border-radius: 999px; height: 10px; overflow: hidden; }
-  .progress-fill { background: var(--accent); height: 100%; border-radius: 999px; transition: width 0.3s ease; width: 0%; }
+  .progress-fill { background: var(--accent); height: 100%; width: 100%; border-radius: 999px; transform: scaleX(0); transform-origin: left; transition: transform 0.3s ease; }
   .progress-fill.complete { background: var(--good); }
   .progress-label { font-size: 13px; color: var(--muted); margin-bottom: 6px; display: flex; justify-content: space-between; }
 `;
@@ -209,14 +209,14 @@ function renderHome() {
       totalAll += total; doneAll += done;
       const pct = total ? Math.round((done / total) * 100) : 0;
       const fill = document.querySelector('[data-fill="' + fnId + '"]');
-      fill.style.width = pct + '%';
+      fill.style.transform = 'scaleX(' + (pct / 100) + ')';
       fill.classList.toggle('complete', pct === 100);
       document.querySelector('[data-pct-label="' + fnId + '"]').textContent = pct + '%';
       document.querySelector('[data-count="' + fnId + '"]').textContent = done + ' of ' + total + ' done';
     });
     const overallPct = totalAll ? Math.round((doneAll / totalAll) * 100) : 0;
     const overallFill = document.querySelector('[data-fill="overall"]');
-    overallFill.style.width = overallPct + '%';
+    overallFill.style.transform = 'scaleX(' + (overallPct / 100) + ')';
     overallFill.classList.toggle('complete', overallPct === 100);
     document.querySelector('[data-pct-label="overall"]').textContent = overallPct + '%';
     document.querySelector('[data-count="overall"]').textContent = doneAll + ' of ' + totalAll + ' controls complete';
@@ -289,7 +289,7 @@ function renderFunctionPage(fn) {
     const total = boxes.length;
     const pct = total ? Math.round((done / total) * 100) : 0;
     const fill = document.querySelector('[data-fill="' + FN_ID + '"]');
-    fill.style.width = pct + '%';
+    fill.style.transform = 'scaleX(' + (pct / 100) + ')';
     fill.classList.toggle('complete', pct === 100);
     document.querySelector('[data-pct-label="' + FN_ID + '"]').textContent = pct + '%';
     document.querySelector('[data-count="' + FN_ID + '"]').textContent = done + ' of ' + total + ' done';
